@@ -1,17 +1,9 @@
-import numpy as np
 import os
-from pathlib import Path
-from tqdm import tqdm
-import pickle as pkl
-import argparse
-import time
-import torch
-import sys, platform
+from functools import reduce
+
+import numpy as np
 from sklearn.neighbors import KDTree
 from termcolor import colored
-from pathlib import Path
-from copy import deepcopy
-from functools import reduce
 
 np.seterr(divide='ignore', invalid='ignore')
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -56,10 +48,10 @@ class Metric_mIoU():
                  use_lidar_mask=False,
                  use_image_mask=False,
                  ):
-        self.class_names = ['others','barrier', 'bicycle', 'bus', 'car', 'construction_vehicle',
+        self.class_names = ['others', 'barrier', 'bicycle', 'bus', 'car', 'construction_vehicle',
                             'motorcycle', 'pedestrian', 'traffic_cone', 'trailer', 'truck',
                             'driveable_surface', 'other_flat', 'sidewalk',
-                            'terrain', 'manmade', 'vegetation','free']
+                            'terrain', 'manmade', 'vegetation', 'free']
         self.save_dir = save_dir
         self.use_lidar_mask = use_lidar_mask
         self.use_image_mask = use_image_mask
@@ -117,8 +109,7 @@ class Metric_mIoU():
         # print('===> mIoU: ' + str(round(np.nanmean(mIoUs) * 100, 2)))
         return round(np.nanmean(mIoUs) * 100, 2), hist
 
-
-    def add_batch(self,semantics_pred,semantics_gt,mask_lidar,mask_camera):
+    def add_batch(self, semantics_pred, semantics_gt, mask_lidar, mask_camera):
         self.cnt += 1
         if self.use_image_mask:
             masked_semantics_gt = semantics_gt[mask_camera]
@@ -134,17 +125,24 @@ class Metric_mIoU():
         _, _hist = self.compute_mIoU(masked_semantics_pred, masked_semantics_gt, self.num_classes)
         self.hist += _hist
 
-    def count_miou(self):
+    def count_miou(self, runner=None):
+
+        action = runner.logger.info if runner is not None else print
+
+        res = {}
         mIoU = self.per_class_iu(self.hist)
         # assert cnt == num_samples, 'some samples are not included in the miou calculation'
-        print(f'===> per class IoU of {self.cnt} samples:')
-        for ind_class in range(self.num_classes-1):
-            print(f'===> {self.class_names[ind_class]} - IoU = ' + str(round(mIoU[ind_class] * 100, 2)))
+        action(f'===> per class IoU of {self.cnt} samples:')
+        for ind_class in range(self.num_classes - 1):
+            action(f'===> {self.class_names[ind_class]} - IoU = ' + str(round(mIoU[ind_class] * 100, 2)))
+            res[self.class_names[ind_class]] = round(mIoU[ind_class] * 100, 2)
 
-        print(f'===> mIoU of {self.cnt} samples: ' + str(round(np.nanmean(mIoU[:self.num_classes-1]) * 100, 2)))
+        action(f'===> mIoU of {self.cnt} samples: ' + str(round(np.nanmean(mIoU[:self.num_classes - 1]) * 100, 2)))
+        res['Overall'] = round(np.nanmean(mIoU[:self.num_classes - 1]) * 100, 2)
         # print(f'===> sample-wise averaged mIoU of {cnt} samples: ' + str(round(np.nanmean(mIoU_avg), 2)))
 
         # return mIoU
+        return res
 
 
 class Metric_FScore():
@@ -167,13 +165,11 @@ class Metric_FScore():
         self.void = void
         self.use_lidar_mask = use_lidar_mask
         self.use_image_mask = use_image_mask
-        self.cnt=0
+        self.cnt = 0
         self.tot_acc = 0.
         self.tot_cmpl = 0.
         self.tot_f1_mean = 0.
         self.eps = 1e-8
-
-
 
     def voxel2points(self, voxel):
         # occIdx = torch.where(torch.logical_and(voxel != FREE, voxel != NOT_OBSERVED))
@@ -187,7 +183,7 @@ class Metric_FScore():
                                 axis=1)
         return points
 
-    def add_batch(self,semantics_pred,semantics_gt,mask_lidar,mask_camera ):
+    def add_batch(self, semantics_pred, semantics_gt, mask_lidar, mask_camera):
 
         # for scene_token in tqdm(preds_dict.keys()):
         self.cnt += 1
@@ -205,9 +201,9 @@ class Metric_FScore():
         ground_truth = self.voxel2points(semantics_gt)
         prediction = self.voxel2points(semantics_pred)
         if prediction.shape[0] == 0:
-            accuracy=0
-            completeness=0
-            fmean=0
+            accuracy = 0
+            completeness = 0
+            fmean = 0
 
         else:
             prediction_tree = KDTree(prediction, leaf_size=self.leaf_size)
@@ -226,14 +222,12 @@ class Metric_FScore():
             accuracy_mask = accuracy_distance < self.threshold_acc
             accuracy = accuracy_mask.mean()
 
-            fmean = 2.0 / (1 / (accuracy+self.eps) + 1 / (completeness+self.eps))
+            fmean = 2.0 / (1 / (accuracy + self.eps) + 1 / (completeness + self.eps))
 
         self.tot_acc += accuracy
         self.tot_cmpl += completeness
         self.tot_f1_mean += fmean
 
-    def count_fscore(self,):
+    def count_fscore(self, ):
         base_color, attrs = 'red', ['bold', 'dark']
         print(pcolor('\n######## F score: {} #######'.format(self.tot_f1_mean / self.cnt), base_color, attrs=attrs))
-
-

@@ -1,20 +1,19 @@
 import copy
+import csv
 import os
+import random
+from os import path as osp
+
+import mmcv
 import numpy as np
-from tqdm import tqdm
+import torch
+from mmcv.parallel import DataContainer as DC
 from mmdet.datasets import DATASETS
 from mmdet3d.datasets import NuScenesDataset
-import mmcv
-from os import path as osp
-from mmdet.datasets import DATASETS
-import torch
-import numpy as np
 from nuscenes.eval.common.utils import quaternion_yaw, Quaternion
-from .nuscnes_eval import NuScenesEval_custom
-from projects.mmdet3d_plugin.models.utils.visual import save_tensor
-from mmcv.parallel import DataContainer as DC
-import random
 from nuscenes.utils.geometry_utils import transform_matrix
+from tqdm import tqdm
+
 from .occ_metrics import Metric_mIoU, Metric_FScore
 
 
@@ -206,12 +205,12 @@ class NuSceneOcc(NuScenesDataset):
             return data
 
     def evaluate_miou(self, occ_results, runner=None, show_dir=None, **eval_kwargs):
-        if show_dir is not None:
-            if not os.path.exists(show_dir):
-                os.mkdir(show_dir)
-            print('\nSaving output and gt in {} for visualization.'.format(show_dir))
-            begin=eval_kwargs.get('begin',None)
-            end=eval_kwargs.get('end',None)
+        # if show_dir is not None:
+        #     if not os.path.exists(show_dir):
+        #         os.mkdir(show_dir)
+        #     print('\nSaving output and gt in {} for visualization.'.format(show_dir))
+        #     begin = eval_kwargs.get('begin', None)
+        #     end = eval_kwargs.get('end', None)
         self.occ_eval_metrics = Metric_mIoU(
             num_classes=18,
             use_lidar_mask=False,
@@ -232,17 +231,16 @@ class NuSceneOcc(NuScenesDataset):
             info = self.data_infos[index]
 
             occ_gt = np.load(os.path.join(self.data_root, info['occ_gt_path']))
-            if show_dir is not None:
-                if begin is not None and end is not None:
-                    if index>= begin and index<end:
-                        sample_token = info['token']
-                        save_path = os.path.join(show_dir,str(index).zfill(4))
-                        np.savez_compressed(save_path, pred=occ_pred, gt=occ_gt, sample_token=sample_token)
-                else:
-                    sample_token=info['token']
-                    save_path=os.path.join(show_dir,str(index).zfill(4))
-                    np.savez_compressed(save_path,pred=occ_pred,gt=occ_gt,sample_token=sample_token)
-
+            # if show_dir is not None:
+            #     if begin is not None and end is not None:
+            #         if index >= begin and index < end:
+            #             sample_token = info['token']
+            #             save_path = os.path.join(show_dir, str(index).zfill(4))
+            #             np.savez_compressed(save_path, pred=occ_pred, gt=occ_gt, sample_token=sample_token)
+            #     else:
+            #         sample_token = info['token']
+            #         save_path = os.path.join(show_dir, str(index).zfill(4))
+            #         np.savez_compressed(save_path, pred=occ_pred, gt=occ_gt, sample_token=sample_token)
 
             gt_semantics = occ_gt['semantics']
             mask_lidar = occ_gt['mask_lidar'].astype(bool)
@@ -252,20 +250,246 @@ class NuSceneOcc(NuScenesDataset):
             if self.eval_fscore:
                 self.fscore_eval_metrics.add_batch(occ_pred, gt_semantics, mask_lidar, mask_camera)
 
-        self.occ_eval_metrics.count_miou()
+        res = self.occ_eval_metrics.count_miou(runner)
         if self.eval_fscore:
             self.fscore_eval_metrics.count_fscore()
 
-    def format_results(self, occ_results,submission_prefix,**kwargs):
+        res.update(dict(epoch=eval_kwargs['epoch']))
+        if not os.path.exists(osp.join(eval_kwargs['jsonfile_prefix'], 'results.csv')):
+            os.makedirs(eval_kwargs['jsonfile_prefix'], exist_ok=True)
+            with open(osp.join(eval_kwargs['jsonfile_prefix'], 'results.csv'), 'w') as f:
+                writer = csv.writer(f)
+                writer.writerow(list(res.keys()))
+
+        with open(osp.join(eval_kwargs['jsonfile_prefix'], 'results.csv'), 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(list(res.values()))
+
+    def format_results(self, occ_results, submission_prefix, **kwargs):
         if submission_prefix is not None:
             mmcv.mkdir_or_exist(submission_prefix)
 
         for index, occ_pred in enumerate(tqdm(occ_results)):
             info = self.data_infos[index]
             sample_token = info['token']
-            save_path=os.path.join(submission_prefix,'{}.npz'.format(sample_token))
-            np.savez_compressed(save_path,occ_pred.astype(np.uint8))
+            save_path = os.path.join(submission_prefix, '{}.npz'.format(sample_token))
+            np.savez_compressed(save_path, occ_pred.astype(np.uint8))
         print('\nFinished.')
 
 
+@DATASETS.register_module()
+class InternalNuSceneOcc(NuSceneOcc):
 
+    def __init__(self,
+                 sequential=False,
+                 n_times=2,
+                 prev_only=False,
+                 next_only=False,
+                 train_adj_ids=None,
+                 test_adj='prev',
+                 test_adj_ids=None,
+                 max_interval=3,
+                 min_interval=0,
+                 verbose=False,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.sequential = sequential
+        self.n_times = n_times
+        self.prev_only = prev_only
+        self.next_only = next_only
+        self.train_adj_ids = train_adj_ids
+        self.test_adj = test_adj
+        self.test_adj_ids = test_adj_ids
+        self.min_interval = min_interval
+        self.max_interval = max_interval
+        self.verbose = verbose
+
+    def prepare_train_data(self, index):
+        """
+        Training data preparation.
+        Args:
+            index (int): Index for accessing the target data.
+        Returns:
+            dict: Training data dict of the corresponding index.
+        """
+        input_dict = self.get_data_info(index)
+        if input_dict is None:
+            return None
+        self.pre_pipeline(input_dict)
+        example = self.pipeline(input_dict)
+        return example
+
+    def get_data_info(self, index):
+        """Get data info according to the given index.
+
+        Args:
+            index (int): Index of the sample data to get.
+
+        Returns:
+            dict: Data information that will be passed to the data \
+                preprocessing pipelines. It includes the following keys:
+
+                - sample_idx (str): Sample index.
+                - pts_filename (str): Filename of point clouds.
+                - sweeps (list[dict]): Infos of sweeps.
+                - timestamp (float): Sample timestamp.
+                - img_filename (str, optional): Image filename.
+                - lidar2img (list[np.ndarray], optional): Transformations \
+                    from lidar to different cameras.
+                - ann_info (dict): Annotation info.
+        """
+        info = self.data_infos[index]
+        # standard protocal modified from SECOND.Pytorch
+        input_dict = dict(
+            index=index,
+            sample_idx=info['token'],
+            pts_filename=info['lidar_path'],
+            sweeps=info['sweeps'],
+            frame_idx=info['frame_idx'],
+            timestamp=info['timestamp'] / 1e6,
+        )
+
+        if 'occ_gt_path' in info:
+            input_dict['occ_gt_path'] = info['occ_gt_path']
+
+        # ego2lidar
+        lidar2ego_rotation = info['lidar2ego_rotation']
+        lidar2ego_translation = info['lidar2ego_translation']
+        ego2lidar = transform_matrix(translation=lidar2ego_translation, rotation=Quaternion(lidar2ego_rotation),
+                                     inverse=True)
+
+        if self.modality['use_camera']:
+            image_paths = []
+            lidar2img_rts = []
+            ego2img_rts = []
+            for cam_type, cam_info in info['cams'].items():
+                image_paths.append(cam_info['data_path'])
+
+                # obtain lidar to image transformation matrix
+                lidar2cam_r = np.linalg.inv(cam_info['sensor2lidar_rotation'])
+                lidar2cam_t = cam_info[
+                                  'sensor2lidar_translation'] @ lidar2cam_r.T
+                lidar2cam_rt = np.eye(4)
+                lidar2cam_rt[:3, :3] = lidar2cam_r.T
+                lidar2cam_rt[3, :3] = -lidar2cam_t
+                intrinsic = cam_info['cam_intrinsic']
+                viewpad = np.eye(4)
+                viewpad[:intrinsic.shape[0], :intrinsic.shape[1]] = intrinsic
+
+                lidar2img_rt = viewpad @ lidar2cam_rt.T
+                lidar2img_rts.append(lidar2img_rt)
+
+                ego2img_rt = lidar2img_rt @ ego2lidar
+                ego2img_rts.append(ego2img_rt)
+
+            if self.sequential:
+                adjacent_type_list = []
+                adjacent_id_list = []
+                for time_id in range(1, self.n_times):
+                    if info['prev'] is None or info['next'] is None:
+                        adjacent = 'prev' if info['next'] is None else 'next'
+                    else:
+                        if self.prev_only or self.next_only:
+                            adjacent = 'prev' if self.prev_only else 'next'
+                        # stage: test
+                        elif self.test_mode:
+                            if self.test_adj_ids is not None:
+                                assert len(self.test_adj_ids) == self.n_times - 1
+                                select_id = self.test_adj_ids[time_id - 1]
+                                assert self.min_interval <= select_id <= self.max_interval
+                                adjacent = {True: 'prev', False: 'next'}[select_id > 0]
+                            else:
+                                adjacent = self.test_adj
+                        # stage: train
+                        elif self.train_adj_ids is not None:
+                            assert len(self.train_adj_ids) == self.n_times - 1
+                            select_id = self.train_adj_ids[time_id - 1]
+                            assert self.min_interval <= select_id <= self.max_interval
+                            adjacent = {True: 'prev', False: 'next'}[select_id > 0]
+                        else:
+                            adjacent = np.random.choice(['prev', 'next'])
+
+                    if type(info[adjacent]) is list:
+                        # stage: test
+                        if self.test_mode:
+                            if len(info[adjacent]) <= self.min_interval:
+                                select_id = len(info[adjacent]) - 1
+                            elif self.test_adj_ids is not None:
+                                assert len(self.test_adj_ids) == self.n_times - 1
+                                select_id = self.test_adj_ids[time_id - 1]
+                                assert self.min_interval <= select_id <= self.max_interval
+                                select_id = min(abs(select_id), len(info[adjacent]) - 1)
+                            else:
+                                assert self.min_interval >= 0 and self.max_interval >= 0, "single direction only here"
+                                select_id_step = (self.max_interval + self.min_interval) // self.n_times
+                                select_id = min(self.min_interval + select_id_step * time_id, len(info[adjacent]) - 1)
+                        # stage: train
+                        else:
+                            if len(info[adjacent]) <= self.min_interval:
+                                select_id = len(info[adjacent]) - 1
+                            elif self.train_adj_ids is not None:
+                                assert len(self.train_adj_ids) == self.n_times - 1
+                                select_id = self.train_adj_ids[time_id - 1]
+                                assert self.min_interval <= select_id <= self.max_interval
+                                select_id = min(abs(select_id), len(info[adjacent]) - 1)
+                            else:
+                                assert self.min_interval >= 0 and self.max_interval >= 0, "single direction only here"
+                                select_id = np.random.choice([adj_id for adj_id in range(
+                                    min(self.min_interval, len(info[adjacent])),
+                                    min(self.max_interval, len(info[adjacent])))])
+                        info_adj = info[adjacent][select_id]
+                        if self.verbose:
+                            print(' get_data_info: ', 'time_id: ', time_id, adjacent, select_id)
+                    else:
+                        info_adj = info[adjacent]
+
+                    adjacent_type_list.append(adjacent)
+                    adjacent_id_list.append(select_id)
+
+                    egocurr2global = np.eye(4, dtype=np.float32)
+                    egocurr2global[:3, :3] = Quaternion(info['ego2global_rotation']).rotation_matrix
+                    egocurr2global[:3, 3] = info['ego2global_translation']
+                    egoadj2global = np.eye(4, dtype=np.float32)
+                    egoadj2global[:3, :3] = Quaternion(info_adj['ego2global_rotation']).rotation_matrix
+                    egoadj2global[:3, 3] = info_adj['ego2global_translation']
+                    lidar2ego = np.eye(4, dtype=np.float32)
+                    lidar2ego[:3, :3] = Quaternion(info['lidar2ego_rotation']).rotation_matrix
+                    lidar2ego[:3, 3] = info['lidar2ego_translation']
+                    lidaradj2lidarcurr = np.linalg.inv(lidar2ego) @ np.linalg.inv(egocurr2global) \
+                                         @ egoadj2global @ lidar2ego
+
+                    for cam_id, (cam_type, cam_info) in enumerate(info_adj['cams'].items()):
+                        image_paths.append(cam_info['data_path'])
+
+                        # lidar curr -> lidar adj -> img adj
+                        lidaradj2imgadj_rt = lidar2img_rts[cam_id]
+                        lidarcurr2imgadj_rt = lidaradj2imgadj_rt @ np.linalg.inv(lidaradj2lidarcurr)
+                        lidar2img_rts.append(lidarcurr2imgadj_rt)
+
+                        # ego curr -> img adj
+                        ego2imgadj_rt = lidarcurr2imgadj_rt @ ego2lidar
+                        ego2img_rts.append(ego2imgadj_rt)
+
+                if self.verbose:
+                    time_list = [0.0]
+                    for i in range(self.n_times - 1):
+                        time = 1e-6 * (
+                                info['timestamp'] - info[adjacent_type_list[i]][adjacent_id_list[i]]['timestamp'])
+                        time_list.append(time)
+                    print(' get_data_info: ', 'time: ', time_list)
+
+                info['adjacent_type'] = adjacent_type_list
+                info['adjacent_id'] = adjacent_id_list
+
+            input_dict.update(
+                dict(
+                    img_filename=image_paths,
+                    ego2img=ego2img_rts,
+                    lidar2img=lidar2img_rts,
+                ))
+
+        if not self.test_mode:
+            annos = self.get_ann_info(index)
+            input_dict['ann_info'] = annos
+
+        return input_dict

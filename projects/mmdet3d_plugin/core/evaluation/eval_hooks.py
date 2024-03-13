@@ -1,4 +1,3 @@
-
 # Note: Considering that MMCV's EvalHook updated its interface in V1.3.16,
 # in order to avoid strong version dependency, we did not directly
 # inherit EvalHook but BaseDistEvalHook.
@@ -9,9 +8,7 @@ import os.path as osp
 import mmcv
 import torch.distributed as dist
 from mmcv.runner import DistEvalHook as BaseDistEvalHook
-from mmcv.runner import EvalHook as BaseEvalHook
 from torch.nn.modules.batchnorm import _BatchNorm
-from mmdet.core.evaluation.eval_hooks import DistEvalHook
 
 
 def _calc_dynamic_intervals(start_interval, dynamic_interval_list):
@@ -28,8 +25,9 @@ def _calc_dynamic_intervals(start_interval, dynamic_interval_list):
 
 class CustomDistEvalHook(BaseDistEvalHook):
 
-    def __init__(self, *args, dynamic_intervals=None,  **kwargs):
+    def __init__(self, *args, jsonfile_prefix=None, dynamic_intervals=None, **kwargs):
         super(CustomDistEvalHook, self).__init__(*args, **kwargs)
+        self.jsonfile_prefix = jsonfile_prefix
         self.use_dynamic_intervals = dynamic_intervals is not None
         if self.use_dynamic_intervals:
             self.dynamic_milestones, self.dynamic_intervals = \
@@ -73,7 +71,7 @@ class CustomDistEvalHook(BaseDistEvalHook):
         if tmpdir is None:
             tmpdir = osp.join(runner.work_dir, '.eval_hook')
 
-        from projects.mmdet3d_plugin.bevformer.apis.test import custom_multi_gpu_test # to solve circlur  import
+        from projects.mmdet3d_plugin.efficientocc.apis.test import custom_multi_gpu_test  # to solve circlur  import
 
         results = custom_multi_gpu_test(
             runner.model,
@@ -86,7 +84,8 @@ class CustomDistEvalHook(BaseDistEvalHook):
 
             # key_score = self.evaluate(runner, results)
             self.dataloader.dataset.evaluate_miou(results,
-                                                     runner=runner)
+                                                  runner=runner,
+                                                  jsonfile_prefix=self.jsonfile_prefix,
+                                                  epoch=runner.epoch + 1)
             # if self.save_best:
             #     self._save_ckpt(runner, key_score)
-  

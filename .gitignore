@@ -1,6 +1,7 @@
 .idea
 data
 ckpts
-
+work_dirs
+figs/augs
 .DS_Store
 
