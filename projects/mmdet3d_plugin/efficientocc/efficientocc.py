@@ -230,7 +230,7 @@ class EfficientOCC(BaseDetector):
 
         occ = self.bbox_head.get_occ(x)
 
-        return bbox_results
+        return occ
 
     def aug_test(self, imgs, img_metas, **kwargs):
         img_shape_copy = copy.deepcopy(img_metas[0]['img_shape'])
