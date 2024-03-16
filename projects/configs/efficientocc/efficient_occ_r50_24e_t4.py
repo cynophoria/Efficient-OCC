@@ -82,14 +82,6 @@ model = dict(
         is_transpose=False,
         fuse=dict(in_channels=64 * n_times * 6 * 3, out_channels=_dim_),  # c*seq*h*fpn_lvl
         norm_cfg=dict(type='SyncBN', requires_grad=True)),
-    seg_head=dict(
-        type='SegHead',
-        in_channels=512,
-        num_classes='',
-        semantic_threshold=0.25,
-        loss_semantic_weight='',
-        downsample=16
-    ),
     bbox_head=dict(
         type='OccHead',
         bev_h=200,
@@ -104,6 +96,7 @@ model = dict(
             use_sigmoid=False,
             loss_weight=1.0),
     ),
+    seg_head=None,
     multi_scale_id=multi_scale_id,  # 4x
     n_voxels=[
         [200, 200, 6],  # 4x
