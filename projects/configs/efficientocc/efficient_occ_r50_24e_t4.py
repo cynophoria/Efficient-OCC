@@ -49,8 +49,8 @@ _dim_ = 256
 # -*- coding: utf-8 -*-
 multi_scale_id = [0, 1, 2]  # 4x/8x/16x
 
-sequential = False
-n_times = 1
+sequential = True
+n_times = 4
 samples_per_gpu = 4
 
 model = dict(
@@ -82,7 +82,14 @@ model = dict(
         is_transpose=False,
         fuse=dict(in_channels=64 * n_times * 6 * 3, out_channels=_dim_),  # c*seq*h*fpn_lvl
         norm_cfg=dict(type='SyncBN', requires_grad=True)),
-    seg_head=None,
+    seg_head=dict(
+        type='SegHead',
+        in_channels=512,
+        num_classes='',
+        semantic_threshold=0.25,
+        loss_semantic_weight='',
+        downsample=16
+    ),
     bbox_head=dict(
         type='OccHead',
         bev_h=200,
@@ -240,26 +247,3 @@ fp16 = dict(loss_scale='dynamic')
 #         interval=2,  # save only at epochs 2,4,6,...
 #     ),
 # ]
-
-
-# [>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>] 6019/6019, 9.7 task/s, elapsed: 623s, ETA:     0s
-# Starting Evaluation...
-# ===> per class IoU of 6019 samples:
-# ===> others - IoU = 5.77
-# ===> barrier - IoU = 37.96
-# ===> bicycle - IoU = 3.19
-# ===> bus - IoU = 41.19
-# ===> car - IoU = 46.45
-# ===> construction_vehicle - IoU = 15.92
-# ===> motorcycle - IoU = 10.23
-# ===> pedestrian - IoU = 15.15
-# ===> traffic_cone - IoU = 9.63
-# ===> trailer - IoU = 26.67
-# ===> truck - IoU = 30.64
-# ===> driveable_surface - IoU = 78.81
-# ===> other_flat - IoU = 37.81
-# ===> sidewalk - IoU = 47.34
-# ===> terrain - IoU = 51.19
-# ===> manmade - IoU = 38.33
-# ===> vegetation - IoU = 33.11
-# ===> mIoU of 6019 samples: 31.14

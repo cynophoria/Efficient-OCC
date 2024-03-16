@@ -22,7 +22,7 @@ class EfficientOCC(BaseDetector):
             neck_fuse,
             neck_3d,  # M2BevNeck
             bbox_head,
-            seg_head,
+            seg_head,  # SegHead
             n_voxels,
             voxel_size,
             multi_scale_id=None,
@@ -213,7 +213,7 @@ class EfficientOCC(BaseDetector):
         if self.seg_head is not None:
             # semantic loss
             x_bev = self.seg_head(feature_bev)
-            loss_seg = self.seg_head.losses(x_bev, gt_bev)
+            loss_seg = self.seg_head.losses(x_bev, gt_bev_seg)
             losses.update(loss_seg)
 
         return losses

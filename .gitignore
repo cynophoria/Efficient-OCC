@@ -4,4 +4,6 @@ ckpts
 work_dirs
 figs/augs
 .DS_Store
+test
+val
 
