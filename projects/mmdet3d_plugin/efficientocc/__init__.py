@@ -1,5 +1,5 @@
 from .efficientocc import EfficientOCC
-from .m2bev_neck import M2BevNeck
+from .voxel_encoder import VoxelEncoder
 from .occ_head import OccHead
 from .seg_head import SegHead
 from .view_transformer import LSViewTransformer

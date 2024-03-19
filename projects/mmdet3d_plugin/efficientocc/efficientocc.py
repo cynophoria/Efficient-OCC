@@ -21,7 +21,7 @@ class EfficientOCC(BaseDetector):
             fpn_fuse,
             neck_fuse,
             view_transformer,
-            neck_3d,  # M2BevNeck
+            voxel_encoder,  # VoxelEncoder
             bbox_head,
             seg_head,  # SegHead
             init_cfg=None,
@@ -33,7 +33,7 @@ class EfficientOCC(BaseDetector):
         self.backbone = build_backbone(backbone)
         self.neck = build_neck(neck)
         self.view_transformer = build_neck(view_transformer)
-        self.neck_3d = build_neck(neck_3d)
+        self.voxel_encoder = build_neck(voxel_encoder)
 
         self.fpn_fuse = fpn_fuse
         if self.fpn_fuse:
@@ -100,44 +100,20 @@ class EfficientOCC(BaseDetector):
 
         features_2d, mlvl_feats = self.img_encoder(img)
 
-        mlvl_volumes = self.view_transformer(img.shape, img_metas, mlvl_feats)
-
-        # bev ms: multi-scale bev map (different x/y/z)
-        for i in range(len(mlvl_volumes)):
-            mlvl_volume = mlvl_volumes[i]
-            bs, c, x, y, z = mlvl_volume.shape
-            # collapse h, [bs, seq*c, vx, vy, vz] -> [bs, seq*c*vz, vx, vy]
-            mlvl_volume = mlvl_volume.permute(0, 2, 3, 4, 1).reshape(bs, x, y, z * c).permute(0, 3, 1, 2)
-
-            # different x/y, [bs, seq*c*vz, vx, vy] -> [bs, seq*c*vz, vx', vy']
-            if i != 0:
-                # upsampling to top level
-                mlvl_volume = resize(
-                    mlvl_volume,
-                    mlvl_volumes[0].size()[2:4],
-                    mode='bilinear',
-                    align_corners=False)
-            else:
-                # same x/y
-                pass
-
-            # [bs, seq*c*vz, vx', vy'] -> [bs, seq*c*vz, vx, vy, 1]
-            mlvl_volume = mlvl_volume.unsqueeze(-1)
-            mlvl_volumes[i] = mlvl_volume
-        mlvl_volumes = torch.cat(mlvl_volumes, dim=1)  # [bs, z1*c1+z2*c2+..., vx, vy, 1]
-
-        x = mlvl_volumes
+        # list[(bs,len(mlvl_feats)*seq*c,dx,dy,dz)]
+        mlvl_volumes = self.view_transformer(img.shape, img_metas,
+                                             mlvl_feats)
 
         def _inner_forward(x):
-            out = self.neck_3d(x)
+            out = self.voxel_encoder(x)
             return out
 
-        if self.with_cp and x.requires_grad:
-            x = cp.checkpoint(_inner_forward, x)
+        if self.with_cp and mlvl_volumes.requires_grad:
+            bev_feats = cp.checkpoint(_inner_forward, mlvl_volumes)
         else:
-            x = _inner_forward(x)  # (bs,256,200,200)
+            bev_feats = _inner_forward(mlvl_volumes)  # (bs,256,200,200)
 
-        return x, None, features_2d
+        return bev_feats, None, features_2d
 
     def forward_train(self,
                       img,

@@ -52,6 +52,18 @@ sequential = False
 n_times = 1
 samples_per_gpu = 4
 
+voxels = [
+    [200, 200, 6],  # 4x
+    # [150, 150, 6],  # 8x
+    # [100, 100, 6],  # 16x
+]
+
+voxel_size = [
+    [0.5, 0.5, 1.0],  # 4x
+    # [2 / 3, 2 / 3, 1.0],  # 8x
+    # [1.0, 1.0, 1.0],  # 16x
+]
+
 model = dict(
     type='EfficientOCC',
     fpn_fuse=False,
@@ -75,25 +87,16 @@ model = dict(
     neck_fuse=dict(in_channels=[256, 192, 128], out_channels=[64, 64, 64]),
     view_transformer=dict(
         type='LSViewTransformer',
-        n_voxels=[
-            [200, 200, 6],  # 4x
-            [150, 150, 6],  # 8x
-            [100, 100, 6],  # 16x
-        ],
-        voxel_size=[
-            [0.5, 0.5, 1.0],  # 4x
-            [2 / 3, 2 / 3, 1.0],  # 8x
-            [1.0, 1.0, 1.0],  # 16x
-        ],
+        n_voxels=voxels,
+        voxel_size=voxel_size,
         linear_sample=True),
-    neck_3d=dict(
-        type='M2BevNeck',
+    voxel_encoder=dict(
+        type='VoxelEncoder',
         in_channels=_dim_,
         out_channels=_dim_,
         num_layers=6,
         stride=1,
-        is_transpose=False,
-        fuse=dict(in_channels=64 * n_times * 6 * 3, out_channels=_dim_),  # c*seq*h*fpn_lvl
+        fuse=dict(in_channels=64 * len(voxels) * n_times * 6 * 3, out_channels=_dim_),  # c*voxel_lvl*seq*h*fpn_lvl
         norm_cfg=dict(type='SyncBN', requires_grad=True)),
     seg_head=None,
     bbox_head=dict(
