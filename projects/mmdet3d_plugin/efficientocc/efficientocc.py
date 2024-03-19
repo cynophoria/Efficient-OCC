@@ -19,6 +19,7 @@ class EfficientOCC(BaseDetector):
             self,
             backbone,
             neck,
+            fpn_fuse,
             neck_fuse,
             neck_3d,  # M2BevNeck
             bbox_head,
@@ -26,7 +27,6 @@ class EfficientOCC(BaseDetector):
             n_voxels,
             voxel_size,
             linear_sample=True,
-            multi_scale_id=None,
             init_cfg=None,
             with_cp=False,
             **kwargs
@@ -36,16 +36,16 @@ class EfficientOCC(BaseDetector):
         self.backbone = build_backbone(backbone)
         self.neck = build_neck(neck)
         self.neck_3d = build_neck(neck_3d)
-        if isinstance(neck_fuse['in_channels'], list):
-            for i, (in_channels, out_channels) in enumerate(zip(neck_fuse['in_channels'], neck_fuse['out_channels'])):
+
+        self.fpn_fuse = fpn_fuse
+        if self.fpn_fuse:
+            for i, (in_channels, out_channels) in enumerate(
+                    zip(neck_fuse['in_channels'], neck_fuse['out_channels'])):
                 self.add_module(
                     f'neck_fuse_{i}',
                     nn.Conv2d(in_channels, out_channels, 3, 1, 1))
-        else:
-            self.neck_fuse = nn.Conv2d(neck_fuse["in_channels"], neck_fuse["out_channels"], 3, 1, 1)
 
         self.linear_sample = linear_sample
-        self.multi_scale_id = multi_scale_id
 
         self.bbox_head = build_head(bbox_head)
         self.seg_head = build_seg_head(seg_head) if seg_head is not None else None
@@ -69,8 +69,7 @@ class EfficientOCC(BaseDetector):
                 projection.append(intrinsic @ extrinsic[:3])
         return torch.stack(projection)
 
-    def extract_feat(self, img, img_metas=None):
-        batch_size = img.shape[0]  # bs
+    def img_encoder(self, img):
         img = img.reshape([-1] + list(img.shape)[2:])  # (bs,num_cams,C,H,W)->(bs*num_cams,C,H,W)
         x = self.backbone(img)  # (bs*num_cams,256*i,64/i,176/i),i=1,2,4,8
 
@@ -84,14 +83,12 @@ class EfficientOCC(BaseDetector):
         else:
             mlvl_feats = _inner_forward(x)  # (bs*num_cams,64,64/i,176/i),i=1,2,4,8
         mlvl_feats = list(mlvl_feats)
-
         features_2d = None
         if self.seg_head:
             features_2d = mlvl_feats
-
-        if self.multi_scale_id is not None:  # [0, 1, 2]
+        if self.fpn_fuse:  # [0, 1, 2]
             mlvl_feats_ = []
-            for msid in self.multi_scale_id:
+            for msid in range(3):
                 # fpn output fusion
                 if getattr(self, f'neck_fuse_{msid}', None) is not None:
                     fuse_feats = [mlvl_feats[msid]]
@@ -112,6 +109,15 @@ class EfficientOCC(BaseDetector):
                 else:
                     mlvl_feats_.append(mlvl_feats[msid])
             mlvl_feats = mlvl_feats_  # (bs*num_cams,64,64/i,176/i),i=1,2,4
+        else:
+            mlvl_feats = mlvl_feats[:3]
+
+        return features_2d, mlvl_feats
+
+    def extract_feat(self, img, img_metas=None):
+        batch_size = img.shape[0]  # bs
+
+        features_2d, mlvl_feats = self.img_encoder(img)
 
         mlvl_volumes = []
         for lvl, mlvl_feat in enumerate(mlvl_feats):
@@ -264,16 +270,16 @@ class EfficientOCC(BaseDetector):
 @torch.no_grad()
 def get_points(n_voxels, voxel_size, origin, linear_sample):
     if linear_sample:  # 线性采点
-        dz = torch.arange(n_voxels[2])
+        dz = torch.arange(n_voxels[2], dtype=torch.float32)
     else:  # 非线性采点
-        cum = torch.arange(n_voxels[2]).cumsum(dim=0)
+        cum = torch.arange(n_voxels[2], dtype=torch.float32).cumsum(dim=0)
         dz = cum / cum.max() * (n_voxels[2] - 1)
 
     points = torch.stack(
         torch.meshgrid(
             [
-                torch.arange(n_voxels[0],dtype=torch.float32),
-                torch.arange(n_voxels[1],dtype=torch.float32),
+                torch.arange(n_voxels[0], dtype=torch.float32),
+                torch.arange(n_voxels[1], dtype=torch.float32),
                 dz,
             ]
         )
