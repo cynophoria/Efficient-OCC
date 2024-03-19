@@ -55,7 +55,6 @@ samples_per_gpu = 4
 model = dict(
     type='EfficientOCC',
     fpn_fuse=False,
-    linear_sample=True,
     backbone=dict(
         type='ResNet',
         depth=50,
@@ -74,7 +73,19 @@ model = dict(
         out_channels=64,
         num_outs=4),
     neck_fuse=dict(in_channels=[256, 192, 128], out_channels=[64, 64, 64]),
-
+    view_transformer=dict(
+        type='LSViewTransformer',
+        n_voxels=[
+            [200, 200, 6],  # 4x
+            [150, 150, 6],  # 8x
+            [100, 100, 6],  # 16x
+        ],
+        voxel_size=[
+            [0.5, 0.5, 1.0],  # 4x
+            [2 / 3, 2 / 3, 1.0],  # 8x
+            [1.0, 1.0, 1.0],  # 16x
+        ],
+        linear_sample=True),
     neck_3d=dict(
         type='M2BevNeck',
         in_channels=_dim_,
@@ -99,16 +110,7 @@ model = dict(
             use_sigmoid=False,
             loss_weight=1.0),
     ),
-    n_voxels=[
-        [200, 200, 6],  # 4x
-        [150, 150, 6],  # 8x
-        [100, 100, 6],  # 16x
-    ],
-    voxel_size=[
-        [0.5, 0.5, 1.0],  # 4x
-        [2 / 3, 2 / 3, 1.0],  # 8x
-        [1.0, 1.0, 1.0],  # 16x
-    ],
+
 )
 
 dataset_type = 'InternalNuSceneOcc'
@@ -242,6 +244,6 @@ fp16 = dict(loss_scale='dynamic')
 #     ),
 # ]
 
-find_unused_parameters=True
+find_unused_parameters = True
 
 # r50 + no fpn neck fuse + single bev + dz 6 + linear sample + no time fuse + batch size 4 + 24 epochs
