@@ -25,6 +25,7 @@ class EfficientOCC(BaseDetector):
             seg_head,  # SegHead
             n_voxels,
             voxel_size,
+            linear_sample=True,
             multi_scale_id=None,
             init_cfg=None,
             with_cp=False,
@@ -43,6 +44,7 @@ class EfficientOCC(BaseDetector):
         else:
             self.neck_fuse = nn.Conv2d(neck_fuse["in_channels"], neck_fuse["out_channels"], 3, 1, 1)
 
+        self.linear_sample = linear_sample
         self.multi_scale_id = multi_scale_id
 
         self.bbox_head = build_head(bbox_head)
@@ -138,6 +140,7 @@ class EfficientOCC(BaseDetector):
                         n_voxels=torch.tensor(n_voxels),
                         voxel_size=torch.tensor(voxel_size),
                         origin=torch.tensor(img_meta["origin"]),
+                        linear_sample=self.linear_sample
                     ).to(feat_i.device)
 
                     volume, valid = backproject_vanilla(
@@ -259,13 +262,19 @@ class EfficientOCC(BaseDetector):
 
 
 @torch.no_grad()
-def get_points(n_voxels, voxel_size, origin):
+def get_points(n_voxels, voxel_size, origin, linear_sample):
+    if linear_sample:  # 线性采点
+        dz = torch.arange(n_voxels[2])
+    else:  # 非线性采点
+        cum = torch.arange(n_voxels[2]).cumsum(dim=0)
+        dz = cum / cum.max() * (n_voxels[2] - 1)
+
     points = torch.stack(
         torch.meshgrid(
             [
-                torch.arange(n_voxels[0]),
-                torch.arange(n_voxels[1]),
-                torch.arange(n_voxels[2]),
+                torch.arange(n_voxels[0],dtype=torch.float32),
+                torch.arange(n_voxels[1],dtype=torch.float32),
+                dz,
             ]
         )
     )
