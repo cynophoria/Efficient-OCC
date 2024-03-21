@@ -66,7 +66,7 @@ voxel_size = [
 
 model = dict(
     type='EfficientOCC',
-    fpn_fuse=False,
+    fpn_fuse=True,
     backbone=dict(
         type='ResNet',
         depth=50,
@@ -249,26 +249,4 @@ fp16 = dict(loss_scale='dynamic')
 
 find_unused_parameters = True
 
-# r50 + no fpn neck fuse + single bev + dz 6 + linear sample + no time fuse + batch size 4 + 24 epochs
-# [>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>] 6019/6019, 13.0 task/s, elapsed: 462s, ETA:     0s
-# Starting Evaluation...
-# 100%|████████████████████████████████████████████████████████████████████| 6019/6019 [00:45<00:00, 133.05it/s]
-# per class IoU of 6019 samples:
-# others - IoU = 5.56
-# barrier - IoU = 37.33
-# bicycle - IoU = 2.59
-# bus - IoU = 40.09
-# car - IoU = 45.58
-# construction_vehicle - IoU = 17.19
-# motorcycle - IoU = 9.29
-# pedestrian - IoU = 14.5
-# traffic_cone - IoU = 9.24
-# trailer - IoU = 28.44
-# truck - IoU = 30.85
-# driveable_surface - IoU = 78.37
-# other_flat - IoU = 37.53
-# sidewalk - IoU = 47.14
-# terrain - IoU = 50.57
-# manmade - IoU = 38.36
-# vegetation - IoU = 33.13
-# mIoU of 6019 samples: 30.93
+# r50 + fpn neck fuse + single bev + dz 6 + linear sample + no time fuse + batch size 4 + 24 epochs
