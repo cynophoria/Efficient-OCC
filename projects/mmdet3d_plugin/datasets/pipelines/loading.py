@@ -7,7 +7,75 @@ import numpy as np
 import torch
 from PIL import Image
 from mmdet.datasets.builder import PIPELINES
+
 from projects.mmdet3d_plugin.core.visualizer.image_vis import draw_lidar_bbox3d_on_img
+
+
+@PIPELINES.register_module()
+class BEVAug(object):
+
+    def __init__(self, bda_aug_conf, is_train=True):
+        self.bda_aug_conf = bda_aug_conf
+        self.is_train = is_train
+
+    def sample_bda_augmentation(self, tta_config=None):
+        """Generate bda augmentation values based on bda_config."""
+        if self.is_train:
+            rotate_bda = np.random.uniform(*self.bda_aug_conf['rot_lim'])
+            scale_bda = np.random.uniform(*self.bda_aug_conf['scale_lim'])
+            flip_dx = np.random.uniform() < self.bda_aug_conf['flip_dx_ratio']
+            flip_dy = np.random.uniform() < self.bda_aug_conf['flip_dy_ratio']
+        else:
+            rotate_bda = 0
+            scale_bda = 1.0
+            if tta_config is not None:
+                flip_dx = tta_config['flip_dx']
+                flip_dy = tta_config['flip_dy']
+            else:
+                flip_dx = False
+                flip_dy = False
+
+        return rotate_bda, scale_bda, flip_dx, flip_dy
+
+    def bev_transform(self, rotate_angle, scale_ratio, flip_dx,
+                      flip_dy):
+        rotate_angle = torch.tensor(rotate_angle / 180 * np.pi)
+        rot_sin = torch.sin(rotate_angle)
+        rot_cos = torch.cos(rotate_angle)
+        rot_mat = torch.Tensor([[rot_cos, -rot_sin, 0], [rot_sin, rot_cos, 0],
+                                [0, 0, 1]])
+        scale_mat = torch.Tensor([[scale_ratio, 0, 0], [0, scale_ratio, 0],
+                                  [0, 0, scale_ratio]])
+        flip_mat = torch.Tensor([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+        if flip_dx:
+            flip_mat = flip_mat @ torch.Tensor([[-1, 0, 0], [0, 1, 0],
+                                                [0, 0, 1]])
+        if flip_dy:
+            flip_mat = flip_mat @ torch.Tensor([[1, 0, 0], [0, -1, 0],
+                                                [0, 0, 1]])
+        rot_mat = flip_mat @ (scale_mat @ rot_mat)
+
+        return rot_mat
+
+    def __call__(self, results):
+        tta_confg = results.get('tta_config', None)
+
+        rotate_bda, scale_bda, flip_dx, flip_dy = self.sample_bda_augmentation(tta_confg)
+
+        bda_rot = self.bev_transform(rotate_bda, scale_bda, flip_dx, flip_dy)
+
+        bda_mat = torch.zeros(4, 4)
+        bda_mat[3, 3] = 1
+        bda_mat[:3, :3] = bda_rot
+
+        results['bda_mat'] = bda_mat
+
+        results['flip_dx'] = flip_dx
+        results['flip_dy'] = flip_dy
+        results['rotate_bda'] = rotate_bda
+        results['scale_bda'] = scale_bda
+
+        return results
 
 
 @PIPELINES.register_module()
@@ -42,6 +110,16 @@ class LoadOccGTFromFile(object):
             semantics = np.zeros((200, 200, 16), dtype=np.uint8)
             mask_lidar = np.zeros((200, 200, 16), dtype=np.uint8)
             mask_camera = np.zeros((200, 200, 16), dtype=np.uint8)
+
+        if results.get('flip_dx', False):
+            semantics = semantics[::-1, ...].copy()
+            mask_lidar = mask_lidar[::-1, ...].copy()
+            mask_camera = mask_camera[::-1, ...].copy()
+
+        if results.get('flip_dy', False):
+            semantics = semantics[:, ::-1, ...].copy()
+            mask_lidar = mask_lidar[:, ::-1, ...].copy()
+            mask_camera = mask_camera[:, ::-1, ...].copy()
 
         results['voxel_semantics'] = semantics
         results['mask_lidar'] = mask_lidar

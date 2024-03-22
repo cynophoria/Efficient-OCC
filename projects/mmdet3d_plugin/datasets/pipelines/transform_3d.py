@@ -243,7 +243,7 @@ class CustomCollect3D(object):
     def __init__(self,
                  keys,
                  meta_keys=('filename', 'ori_shape', 'img_shape', 'lidar2img', 'ego2lidar',
-                            'depth2img', 'cam2img', 'pad_shape', 'ego2img', 'origin',
+                            'depth2img', 'cam2img', 'pad_shape', 'ego2img', 'origin', 'bda_mat',
                             'scale_factor', 'flip', 'pcd_horizontal_flip',
                             'pcd_vertical_flip', 'box_mode_3d', 'box_type_3d',
                             'img_norm_cfg', 'pcd_trans', 'sample_idx', 'prev_idx', 'next_idx',

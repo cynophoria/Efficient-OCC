@@ -27,9 +27,9 @@ class LSViewTransformer(BaseModule):
         extrinsics = map(torch.tensor, img_meta["ego2img"])
         for extrinsic in extrinsics:
             if noise > 0:
-                projection.append(intrinsic @ extrinsic[:3] + noise)
+                projection.append(intrinsic @ extrinsic[:3] @ img_meta['bda_mat'].inverse() + noise)
             else:
-                projection.append(intrinsic @ extrinsic[:3])
+                projection.append(intrinsic @ extrinsic[:3] @ img_meta['bda_mat'].inverse())
         return torch.stack(projection)
 
     def forward(self, img_shape, img_metas, mlvl_feats):
