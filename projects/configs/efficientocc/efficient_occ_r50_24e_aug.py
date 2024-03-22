@@ -31,6 +31,12 @@ data_config = {
     'pad_color': (0, 0, 0),
 }
 
+bda_aug_conf = dict(
+    rot_lim=(-0., 0.),
+    scale_lim=(1., 1.),
+    flip_dx_ratio=0.5,
+    flip_dy_ratio=0.5)
+
 # For nuScenes we usually do 10-class detection
 class_names = [
     'car', 'truck', 'construction_vehicle', 'bus', 'trailer', 'barrier',
@@ -47,14 +53,26 @@ input_modality = dict(
 _dim_ = 256
 
 # -*- coding: utf-8 -*-
-multi_scale_id = [0, 1, 2]  # 4x/8x/16x
 
 sequential = False
 n_times = 1
 samples_per_gpu = 4
 
+voxels = [
+    [200, 200, 6],  # 4x
+    # [150, 150, 6],  # 8x
+    # [100, 100, 6],  # 16x
+]
+
+voxel_size = [
+    [0.5, 0.5, 1.0],  # 4x
+    # [2 / 3, 2 / 3, 1.0],  # 8x
+    # [1.0, 1.0, 1.0],  # 16x
+]
+
 model = dict(
     type='EfficientOCC',
+    fpn_fuse=False,
     backbone=dict(
         type='ResNet',
         depth=50,
@@ -73,14 +91,18 @@ model = dict(
         out_channels=64,
         num_outs=4),
     neck_fuse=dict(in_channels=[256, 192, 128], out_channels=[64, 64, 64]),
-    neck_3d=dict(
-        type='M2BevNeck',
+    view_transformer=dict(
+        type='LSViewTransformer',
+        n_voxels=voxels,
+        voxel_size=voxel_size,
+        linear_sample=True),
+    voxel_encoder=dict(
+        type='VoxelEncoder',
         in_channels=_dim_,
         out_channels=_dim_,
         num_layers=6,
         stride=1,
-        is_transpose=False,
-        fuse=dict(in_channels=64 * n_times * 6 * 3, out_channels=_dim_),  # c*seq*h*fpn_lvl
+        fuse=dict(in_channels=64 * len(voxels) * n_times * 6 * 3, out_channels=_dim_),  # c*voxel_lvl*seq*h*fpn_lvl
         norm_cfg=dict(type='SyncBN', requires_grad=True)),
     seg_head=None,
     bbox_head=dict(
@@ -97,17 +119,7 @@ model = dict(
             use_sigmoid=False,
             loss_weight=1.0),
     ),
-    multi_scale_id=multi_scale_id,  # 4x
-    n_voxels=[
-        [200, 200, 6],  # 4x
-        [150, 150, 6],  # 8x
-        [100, 100, 6],  # 16x
-    ],
-    voxel_size=[
-        [0.5, 0.5, 1.0],  # 4x
-        [2 / 3, 2 / 3, 1.0],  # 8x
-        [1.0, 1.0, 1.0],  # 16x
-    ],
+
 )
 
 dataset_type = 'InternalNuSceneOcc'
@@ -117,12 +129,13 @@ occ_gt_data_root = 'data/occ3d-nus'
 
 train_pipeline = [
     dict(type='LoadMultiViewImageFromFiles', to_float32=False),
+    dict(type='BEVAug', bda_aug_conf=bda_aug_conf, is_train=True),
+    dict(type='RandomAugImageMultiViewImage', data_config=data_config, is_train=True),
     dict(type='LoadOccGTFromFile', data_root=occ_gt_data_root),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True, with_attr_label=False),
     dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
     dict(type='ObjectNameFilter', classes=class_names),
     dict(type='KittiSetOrigin', point_cloud_range=point_cloud_range),
-    dict(type='RandomAugImageMultiViewImage', data_config=data_config, is_train=True),
     dict(type='NormalizeMultiviewImage', **img_norm_cfg),
     dict(type='DefaultFormatBundle3D', class_names=class_names),
     dict(type='CustomCollect3D', keys=['img', 'voxel_semantics', 'mask_lidar', 'mask_camera'])
@@ -130,9 +143,10 @@ train_pipeline = [
 
 test_pipeline = [
     dict(type='LoadMultiViewImageFromFiles', to_float32=False),
+    dict(type='BEVAug', bda_aug_conf=bda_aug_conf, is_train=False),
+    dict(type='RandomAugImageMultiViewImage', data_config=data_config, is_train=False),
     dict(type='LoadOccGTFromFile', data_root=occ_gt_data_root),
     dict(type='KittiSetOrigin', point_cloud_range=point_cloud_range),
-    dict(type='RandomAugImageMultiViewImage', data_config=data_config, is_train=False),
     dict(type='NormalizeMultiviewImage', **img_norm_cfg),
     dict(type='DefaultFormatBundle3D', class_names=class_names, with_label=False),
     dict(type='CustomCollect3D', keys=['img'])
@@ -241,25 +255,34 @@ fp16 = dict(loss_scale='dynamic')
 #     ),
 # ]
 
+find_unused_parameters = True
 
-# [>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>] 6019/6019, 9.7 task/s, elapsed: 623s, ETA:     0s
+# r50 + 24 epochs + no image aug + no bev aug
+
+# r50 + 24 epochs + no image aug + bev aug
+
+# r50 + 24 epochs + image aug + no bev aug
+# [>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>] 6019/6019, 13.0 task/s, elapsed: 462s, ETA:     0s
 # Starting Evaluation...
-# ===> per class IoU of 6019 samples:
-# ===> others - IoU = 5.77
-# ===> barrier - IoU = 37.96
-# ===> bicycle - IoU = 3.19
-# ===> bus - IoU = 41.19
-# ===> car - IoU = 46.45
-# ===> construction_vehicle - IoU = 15.92
-# ===> motorcycle - IoU = 10.23
-# ===> pedestrian - IoU = 15.15
-# ===> traffic_cone - IoU = 9.63
-# ===> trailer - IoU = 26.67
-# ===> truck - IoU = 30.64
-# ===> driveable_surface - IoU = 78.81
-# ===> other_flat - IoU = 37.81
-# ===> sidewalk - IoU = 47.34
-# ===> terrain - IoU = 51.19
-# ===> manmade - IoU = 38.33
-# ===> vegetation - IoU = 33.11
-# ===> mIoU of 6019 samples: 31.14
+# 100%|████████████████████████████████████████████████████████████████████| 6019/6019 [00:45<00:00, 133.05it/s]
+# per class IoU of 6019 samples:
+# others - IoU = 5.56
+# barrier - IoU = 37.33
+# bicycle - IoU = 2.59
+# bus - IoU = 40.09
+# car - IoU = 45.58
+# construction_vehicle - IoU = 17.19
+# motorcycle - IoU = 9.29
+# pedestrian - IoU = 14.5
+# traffic_cone - IoU = 9.24
+# trailer - IoU = 28.44
+# truck - IoU = 30.85
+# driveable_surface - IoU = 78.37
+# other_flat - IoU = 37.53
+# sidewalk - IoU = 47.14
+# terrain - IoU = 50.57
+# manmade - IoU = 38.36
+# vegetation - IoU = 33.13
+# mIoU of 6019 samples: 30.93
+
+# r50 + 24 epochs + image aug + bev aug

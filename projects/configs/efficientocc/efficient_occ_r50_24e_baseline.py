@@ -129,8 +129,8 @@ occ_gt_data_root = 'data/occ3d-nus'
 
 train_pipeline = [
     dict(type='LoadMultiViewImageFromFiles', to_float32=False),
-    dict(type='BEVAug', bda_aug_conf=bda_aug_conf, is_train=True),
-    dict(type='RandomAugImageMultiViewImage', data_config=data_config, is_train=True),
+    dict(type='BEVAug', bda_aug_conf=bda_aug_conf, is_train=False),
+    dict(type='RandomAugImageMultiViewImage', data_config=data_config, is_train=False),
     dict(type='LoadOccGTFromFile', data_root=occ_gt_data_root),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True, with_attr_label=False),
     dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
