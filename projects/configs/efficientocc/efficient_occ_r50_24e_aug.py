@@ -59,15 +59,15 @@ n_times = 1
 samples_per_gpu = 4
 
 voxels = [
-    [200, 200, 6],  # 4x
-    # [150, 150, 6],  # 8x
-    # [100, 100, 6],  # 16x
+    [200, 200, 8],  # 4x
+    # [150, 150, 8],  # 8x
+    # [100, 100, 8],  # 16x
 ]
 
 voxel_size = [
-    [0.5, 0.5, 1.0],  # 4x
-    # [2 / 3, 2 / 3, 1.0],  # 8x
-    # [1.0, 1.0, 1.0],  # 16x
+    [0.4, 0.4, 0.8],  # 4x
+    # [8/15, 8/15, 0.8],  # 8x
+    # [0.8, 0.8, 0.8],  # 16x
 ]
 
 model = dict(
@@ -102,7 +102,7 @@ model = dict(
         out_channels=_dim_,
         num_layers=6,
         stride=1,
-        fuse=dict(in_channels=64 * len(voxels) * n_times * 6 * 3, out_channels=_dim_),  # c*voxel_lvl*seq*h*fpn_lvl
+        fuse=dict(in_channels=64 * len(voxels) * n_times * 8 * 3, out_channels=_dim_),  # c*voxel_lvl*seq*h*fpn_lvl
         norm_cfg=dict(type='SyncBN', requires_grad=True)),
     seg_head=None,
     bbox_head=dict(
@@ -257,11 +257,11 @@ fp16 = dict(loss_scale='dynamic')
 
 find_unused_parameters = True
 
-# r50 + 24 epochs + no image aug + no bev aug
+# r50 + 24 epochs + no image aug + no bev aug  (200,200,6)
 
 # r50 + 24 epochs + no image aug + bev aug
 
-# r50 + 24 epochs + image aug + no bev aug
+# r50 + 24 epochs + image aug + no bev aug (200,200,6)
 # [>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>] 6019/6019, 13.0 task/s, elapsed: 462s, ETA:     0s
 # Starting Evaluation...
 # 100%|████████████████████████████████████████████████████████████████████| 6019/6019 [00:45<00:00, 133.05it/s]
