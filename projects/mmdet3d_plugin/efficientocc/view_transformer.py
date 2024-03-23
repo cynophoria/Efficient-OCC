@@ -102,7 +102,7 @@ def get_voxels(n_voxels, voxel_size, origin, linear_sample):
             ]
         )
     )
-    new_origin = origin - n_voxels / 2.0 * voxel_size
+    new_origin = origin - n_voxels / 2.0 * voxel_size + voxel_size / 2
     points = points * voxel_size.view(3, 1, 1, 1) + new_origin.view(3, 1, 1, 1)
     return points
 
