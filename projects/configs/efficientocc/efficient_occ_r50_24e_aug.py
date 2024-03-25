@@ -257,7 +257,29 @@ fp16 = dict(loss_scale='dynamic')
 
 find_unused_parameters = True
 
-# r50 + 24 epochs + no image aug + no bev aug  (200,200,6)
+# r50 + 24 epochs + no image aug + no bev aug (200,200,6)
+# [>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>] 6019/6019, 13.0 task/s, elapsed: 464s, ETA:     0s
+# Starting Evaluation...
+# 100%|████████████████████████████████████████████████████████████████████| 6019/6019 [00:42<00:00, 143.17it/s]
+# per class IoU of 6019 samples:
+# others - IoU = 5.12
+# barrier - IoU = 36.29
+# bicycle - IoU = 3.01
+# bus - IoU = 35.25
+# car - IoU = 43.9
+# construction_vehicle - IoU = 11.88
+# motorcycle - IoU = 7.46
+# pedestrian - IoU = 12.16
+# traffic_cone - IoU = 8.24
+# trailer - IoU = 26.42
+# truck - IoU = 27.58
+# driveable_surface - IoU = 77.71
+# other_flat - IoU = 36.32
+# sidewalk - IoU = 46.31
+# terrain - IoU = 50.02
+# manmade - IoU = 37.45
+# vegetation - IoU = 31.32
+# mIoU of 6019 samples: 29.2
 
 # r50 + 24 epochs + no image aug + bev aug
 
@@ -286,3 +308,25 @@ find_unused_parameters = True
 # mIoU of 6019 samples: 30.93
 
 # r50 + 24 epochs + image aug + bev aug
+# [>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>] 6019/6019, 12.9 task/s, elapsed: 468s, ETA:     0s
+# Starting Evaluation...
+# 100%|████████████████████████████████████████████████████████████████████| 6019/6019 [00:45<00:00, 132.52it/s]
+# per class IoU of 6019 samples:
+# others - IoU = 5.8
+# barrier - IoU = 37.72
+# bicycle - IoU = 3.07
+# bus - IoU = 40.4
+# car - IoU = 45.09
+# construction_vehicle - IoU = 15.77
+# motorcycle - IoU = 10.55
+# pedestrian - IoU = 13.95
+# traffic_cone - IoU = 9.14
+# trailer - IoU = 28.58
+# truck - IoU = 29.58
+# driveable_surface - IoU = 78.34
+# other_flat - IoU = 36.36
+# sidewalk - IoU = 46.64
+# terrain - IoU = 50.53
+# manmade - IoU = 37.55
+# vegetation - IoU = 32.22
+# mIoU of 6019 samples: 30.67

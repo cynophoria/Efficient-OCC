@@ -247,6 +247,28 @@ fp16 = dict(loss_scale='dynamic')
 #     ),
 # ]
 
-find_unused_parameters = True
+# find_unused_parameters = True
 
 # r50 + fpn neck fuse + single bev + dz 6 + linear sample + no time fuse + batch size 4 + 24 epochs
+# [>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>] 6019/6019, 12.9 task/s, elapsed: 467s, ETA:     0s
+# Starting Evaluation...
+# 100%|████████████████████████████████████████████████████████████████████| 6019/6019 [00:44<00:00, 134.34it/s]
+# per class IoU of 6019 samples:
+# others - IoU = 5.58
+# barrier - IoU = 38.76
+# bicycle - IoU = 2.56
+# bus - IoU = 40.79
+# car - IoU = 46.27
+# construction_vehicle - IoU = 15.02
+# motorcycle - IoU = 8.36
+# pedestrian - IoU = 15.29
+# traffic_cone - IoU = 9.74
+# trailer - IoU = 27.98
+# truck - IoU = 30.69
+# driveable_surface - IoU = 78.5
+# other_flat - IoU = 37.68
+# sidewalk - IoU = 47.31
+# terrain - IoU = 51.18
+# manmade - IoU = 38.16
+# vegetation - IoU = 33.37
+# mIoU of 6019 samples: 31.02
