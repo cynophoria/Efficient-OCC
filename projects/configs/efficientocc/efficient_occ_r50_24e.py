@@ -54,20 +54,20 @@ _dim_ = 256
 
 # -*- coding: utf-8 -*-
 
-sequential = False
-n_times = 1
+sequential = True
+n_times = 4
 samples_per_gpu = 4
 
 voxels = [
-    [200, 200, 6],  # 4x
-    # [150, 150, 6],  # 8x
-    # [100, 100, 6],  # 16x
+    [200, 200, 8],  # 4x
+    [150, 150, 8],  # 8x
+    [100, 100, 8],  # 16x
 ]
 
 voxel_size = [
-    [0.5, 0.5, 1.0],  # 4x
-    # [2 / 3, 2 / 3, 1.0],  # 8x
-    # [1.0, 1.0, 1.0],  # 16x
+    [0.4, 0.4, 0.8],  # 4x
+    [8 / 15, 8 / 15, 0.8],  # 8x
+    [0.8, 0.8, 0.8],  # 16x
 ]
 
 model = dict(
@@ -129,8 +129,8 @@ occ_gt_data_root = 'data/occ3d-nus'
 
 train_pipeline = [
     dict(type='LoadMultiViewImageFromFiles', to_float32=False),
-    dict(type='BEVAug', bda_aug_conf=bda_aug_conf, is_train=False),
-    dict(type='RandomAugImageMultiViewImage', data_config=data_config, is_train=False),
+    dict(type='BEVAug', bda_aug_conf=bda_aug_conf, is_train=True),
+    dict(type='RandomAugImageMultiViewImage', data_config=data_config, is_train=True),
     dict(type='LoadOccGTFromFile', data_root=occ_gt_data_root),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True, with_attr_label=False),
     dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
@@ -241,7 +241,7 @@ log_config = dict(
         dict(type='TensorboardLoggerHook')
     ])
 
-checkpoint_config = dict(interval=1, max_keep_ckpts=4)
+checkpoint_config = dict(interval=1, max_keep_ckpts=1)
 
 # fp16 settings, the loss scale is specifically tuned to avoid Nan
 fp16 = dict(loss_scale='dynamic')
@@ -255,6 +255,6 @@ fp16 = dict(loss_scale='dynamic')
 #     ),
 # ]
 
-find_unused_parameters = True
+# find_unused_parameters = True
 
-# r50 + no image aug + no bda aug + no fpn neck fuse + single bev + dz 6 + linear sample + no time fuse + batch size 4 + 24 epochs
+# r50

@@ -10,6 +10,9 @@ from mmdet.models import HEADS
 from mmdet.models.builder import build_loss
 from torch import nn
 
+from projects.mmdet3d_plugin.efficientocc.loss.lovasz_softmax import lovasz_softmax
+from projects.mmdet3d_plugin.efficientocc.loss.nusc_param import nusc_class_frequencies
+
 
 @HEADS.register_module()
 class OccHead(BaseModule):
@@ -92,8 +95,8 @@ class OccHead(BaseModule):
         loss_dict = dict()
         occ = preds_dicts
         assert voxel_semantics.min() >= 0 and voxel_semantics.max() <= 17
-        loss_occ = self.loss_single(voxel_semantics, mask_camera, occ)
-        loss_dict['loss_occ'] = loss_occ
+        loss_occ, loss_lovasz = self.loss_single(voxel_semantics, mask_camera, occ)
+        loss_dict['loss_occ'], loss_dict['loss_lovasz'] = loss_occ, loss_lovasz
         return loss_dict
 
     def loss_single(self, voxel_semantics, mask_camera, preds):
@@ -105,12 +108,17 @@ class OccHead(BaseModule):
             num_total_samples = mask_camera.sum()
             loss_occ = self.loss_occ(preds, voxel_semantics, mask_camera, avg_factor=num_total_samples)
 
+            voxel_semantics = voxel_semantics[mask_camera.nonzero().squeeze()]
+            preds = preds[mask_camera.nonzero().squeeze()]
+            loss_lovasz = lovasz_softmax(preds.softmax(-1), voxel_semantics)
+
         else:
             voxel_semantics = voxel_semantics.reshape(-1)
             preds = preds.reshape(-1, self.num_classes)
             loss_occ = self.loss_occ(preds, voxel_semantics, )
+            loss_lovasz = lovasz_softmax(preds.softmax(-1), voxel_semantics)
 
-        return loss_occ
+        return loss_occ, loss_lovasz
 
     @force_fp32(apply_to=('preds'))
     def get_occ(self, preds):
